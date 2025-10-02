@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Smart Study Planner</title>
+  <style>
+    :root{
+      --bg:#0f1724; --card:#0b1220; --muted:#9aa4b2; --accent:#6ee7b7; --danger:#fb7185;
+      --glass: rgba(255,255,255,0.03);
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:linear-gradient(180deg,#071428 0%, #0b1730 100%);color:#e6eef6;padding:28px}
+    .app{max-width:1100px;margin:0 auto}
+    header{display:flex;align-items:center;gap:16px;margin-bottom:18px}
+    header h1{font-size:20px;margin:0}
+    .controls{display:flex;gap:10px;margin-left:auto}
+    button{background:var(--glass);border:1px solid rgba(255,255,255,0.04);padding:8px 12px;border-radius:8px;color:inherit;cursor:pointer}
+    .layout{display:grid;grid-template-columns:360px 1fr;gap:16px}
+    .card{background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));padding:14px;border-radius:12px;border:1px solid rgba(255,255,255,0.03)}
+    .new-task label{display:block;font-size:12px;color:var(--muted);margin-top:8px}
+    .new-task input,.new-task textarea, .new-task select{width:100%;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:inherit}
+    .list{margin-top:12px}
+    .task{display:flex;gap:10px;align-items:flex-start;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.02);margin-bottom:8px}
+    .task .meta{flex:1}
+    .task h3{margin:0;font-size:15px}
+    .small{font-size:12px;color:var(--muted)}
+    .progress{height:8px;background:rgba(255,255,255,0.03);border-radius:8px;margin-top:8px;overflow:hidden}
+    .progress > b{display:block;height:100%;background:linear-gradient(90deg,var(--accent),#60a5fa);width:0%}
+    .right{display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+    .pill{padding:6px 8px;border-radius:999px;font-size:12px;background:rgba(255,255,255,0.02)}
+    .filters{display:flex;gap:8px;margin-top:8px}
+    .timeline{height:220px;margin-bottom:12px;padding:12px}
+    svg{width:100%;height:100%;background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.0));border-radius:8px}
+    footer{margin-top:16px;text-align:center;color:var(--muted);font-size:13px}
+    .topbar{display:flex;gap:8px;align-items:center}
+    input[type=date], input[type=datetime-local]{padding:8px}
+    .search{flex:1}
+    .import-file{display:none}
+    .no-tasks{color:var(--muted);padding:18px;text-align:center}
+    @media (max-width:900px){.layout{grid-template-columns:1fr;}.right{align-items:flex-start}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <img src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='36' height='36'><rect rx='8' width='36' height='36' fill='%236ee7b7'/></svg>" alt="logo" style="width:44px;height:44px;border-radius:8px;">
+      <div>
+        <h1>Smart Study Planner</h1>
+        <div class="small">Plan study goals, set reminders and visual timelines. Local-only storage.</div>
+      </div>
+      <div class="controls">
+        <input class="search" placeholder="Search tasks or subject..." id="q" />
+        <button id="exportBtn">Export</button>
+        <button id="importBtn">Import</button>
+        <input type="file" id="importFile" class="import-file" accept="application/json" />
+        <button id="clearBtn">Clear All</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="card">
+        <div class="new-task">
+          <label>Title</label>
+          <input id="title" placeholder="e.g. Revision - Data Structures" />
+          <label>Subject / Tag</label>
+          <input id="tag" placeholder="e.g. Algorithms" />
+          <label>Details</label>
+          <textarea id="notes" rows="3" placeholder="Add quick notes or steps..."></textarea>
+          <label>Start</label>
+          <input type="date" id="startDate" />
+          <label>Due</label>
+          <input type="date" id="dueDate" />
+          <label>Reminder (optional)</label>
+          <input type="datetime-local" id="reminder" />
+          <label>Estimated effort (hours)</label>
+          <input type="number" id="effort" min="0" step="0.5" placeholder="2" />
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button id="addBtn">Add Task</button>
+            <button id="sampleBtn">Add Sample</button>
+          </div>
+        </div>
+        <div class="filters">
+          <select id="filterStatus"><option value="all">All</option><option value="pending">Pending</option><option value="completed">Completed</option></select>
+          <select id="filterTag"><option value="all">All Tags</option></select>
+          <button id="sortBtn">Sort by Soonest</button>
+        </div>
+
+        <div class="list" id="list"></div>
+      </aside>
+
+      <main>
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div class="small">Timeline (relative)</div>
+              <h2 style="margin:4px 0">Visual Timeline</h2>
+            </div>
+            <div class="small">Range: <span id="rangeInfo">—</span></div>
+          </div>
+
+          <div class="timeline card" id="timelineWrap">
+            <svg id="timeline"></svg>
+          </div>
+
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <div class="card" style="flex:1;min-width:220px">
+              <h3 style="margin:0">Stats</h3>
+              <div class="small" style="margin-top:8px" id="stats">—</div>
+            </div>
+            <div class="card" style="width:260px">
+              <h3 style="margin:0">Upcoming Reminders</h3>
+              <div class="small" id="upcoming">—</div>
+            </div>
+          </div>
+        </div>
+
+        <footer>
+          <div>Data stored locally in your browser (localStorage). Reminders will show only while this page is open and permission is granted for notifications.</div>
+        </footer>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    // Simple localStorage-based planner
+    const LS_KEY = 'smartStudyPlannerTasks_v1';
+    let tasks = [];
+    let timers = [];
+
+    // Helpers
+    const $ = id => document.getElementById(id);
+    const save = ()=> localStorage.setItem(LS_KEY, JSON.stringify(tasks));
+    const load = ()=> JSON.parse(localStorage.getItem(LS_KEY) || '[]');
+
+    // init
+    function init(){
+      tasks = load();
+      bind();
+      renderFilters();
+      render();
+      scheduleAllReminders();
+    }
+
+    function bind(){
+      $('addBtn').addEventListener('click', addTask);
+      $('clearBtn').addEventListener('click', ()=>{ if(confirm('Clear all tasks?')){ tasks=[]; save(); render(); } });
+      $('exportBtn').addEventListener('click', exportJSON);
+      $('importBtn').addEventListener('click', ()=>$('importFile').click());
+      $('importFile').addEventListener('change', importJSON);
+      $('sampleBtn').addEventListener('click', addSample);
+      $('q').addEventListener('input', render);
+      $('filterStatus').addEventListener('change', render);
+      $('filterTag').addEventListener('change', render);
+      $('sortBtn').addEventListener('click', ()=>{ tasks.sort((a,b)=> new Date(a.due||a.start) - new Date(b.due||b.start)); save(); render(); });
+    }
+
+    function addSample(){
+      const now = new Date();
+      const tomorrow = new Date(Date.now()+24*3600*1000);
+      tasks.push({id: idGen(), title:'Revise DS notes', tag:'DS', notes:'Chapters 1-4', start: formatDate(now), due: formatDate(tomorrow), reminder: new Date(Date.now()+2*60*1000).toISOString(), effort:2, progress:20, done:false});
+      save(); render(); scheduleAllReminders(); renderFilters();
+    }
+
+    function formatDate(d){
+      if(!d) return '';
+      const dt = new Date(d);
+      const yyyy = dt.getFullYear();
+      const mm = String(dt.getMonth()+1).padStart(2,'0');
+      const dd = String(dt.getDate()).padStart(2,'0');
+      return `${yyyy}-${mm}-${dd}`;
+    }
+
+    function idGen(){ return Math.random().toString(36).slice(2,9); }
+
+    function addTask(){
+      const title = $('title').value.trim();
+      if(!title){ alert('Title required'); return; }
+      const t = {id:idGen(), title, tag: $('tag').value.trim()||'General', notes:$('notes').value.trim(), start: $('startDate').value||null, due: $('dueDate').value||null, reminder: $('reminder').value? new Date($('reminder').value).toISOString():null, effort: Number($('effort').value||0), progress:0, done:false, created: new Date().toISOString() };
+      tasks.push(t);
+      save(); render(); scheduleReminder(t);
+      renderFilters();
+      // clear form
+      $('title').value=''; $('tag').value=''; $('notes').value=''; $('startDate').value=''; $('dueDate').value=''; $('reminder').value=''; $('effort').value='';
+    }
+
+    function exportJSON(){
+      const blob = new Blob([JSON.stringify(tasks, null, 2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = 'smart-study-planner.json'; a.click(); URL.revokeObjectURL(url);
+    }
+
+    function importJSON(e){
+      const f = e.target.files[0]; if(!f) return;
+      const reader = new FileReader();
+      reader.onload = ()=>{
+        try{ const data = JSON.parse(reader.result); if(Array.isArray(data)){ tasks = data; save(); render(); scheduleAllReminders(); renderFilters(); alert('Imported'); } else alert('Invalid file'); }catch(err){ alert('Invalid JSON'); }
+        $('importFile').value='';
+      };
+      reader.readAsText(f);
+    }
+
+    function renderFilters(){
+      const tagSet = new Set(tasks.map(t=>t.tag||'General'));
+      const sel = $('filterTag');
+      sel.innerHTML = '<option value="all">All Tags</option>' + [...tagSet].map(x=>`<option value="${x}">${x}</option>`).join('');
+    }
+
+    function render(){
+      const q = $('q').value.toLowerCase();
+      const status = $('filterStatus').value;
+      const tag = $('filterTag').value;
+      const list = $('list'); list.innerHTML='';
+      let visible = tasks.slice();
+      if(status==='pending') visible = visible.filter(t=>!t.done);
+      if(status==='completed') visible = visible.filter(t=>t.done);
+      if(tag!=='all') visible = visible.filter(t=> (t.tag||'').toLowerCase() === tag.toLowerCase());
+      if(q) visible = visible.filter(t=> (t.title+ ' ' + (t.notes||'') + ' ' + (t.tag||'')).toLowerCase().includes(q));
+      if(visible.length===0){ list.innerHTML = '<div class="no-tasks">No tasks — add one on the left.</div>'; renderTimeline(); renderStats(); renderUpcoming(); return; }
+
+      visible.sort((a,b)=> new Date(a.due||a.start||a.created) - new Date(b.due||b.start||b.created));
+      for(const t of visible){
+        const div = document.createElement('div'); div.className='task';
+        div.innerHTML = `<div class="meta"><h3>${escapeHtml(t.title)}</h3><div class="small">${escapeHtml(t.tag||'')} • ${t.start||'—'} → ${t.due||'—'}</div><div class="small">${escapeHtml(t.notes||'')}</div>
+          <div class="progress" title="Progress"><b style="width:${(t.progress||0)}%"></b></div></div>
+          <div class="right">
+            <div class="pill small">Effort: ${t.effort||0}h</div>
+            <div style="display:flex;gap:6px">
+              <button data-id="${t.id}" class="inc">+10%</button>
+              <button data-id="${t.id}" class="toggle">${t.done? 'Undo':'Done'}</button>
+              <button data-id="${t.id}" class="edit">Edit</button>
+              <button data-id="${t.id}" class="del">Del</button>
+            </div>
+          </div>`;
+        list.appendChild(div);
+      }
+      // events
+      list.querySelectorAll('.inc').forEach(b=>b.addEventListener('click', e=>{ const id=e.target.dataset.id; const tt=tasks.find(x=>x.id===id); tt.progress = Math.min(100,(tt.progress||0)+10); if(tt.progress>=100){tt.done=true;} save(); render(); }));
+      list.querySelectorAll('.toggle').forEach(b=>b.addEventListener('click', e=>{ const id=e.target.dataset.id; const tt=tasks.find(x=>x.id===id); tt.done = !tt.done; if(tt.done) tt.progress=100; save(); render(); }));
+      list.querySelectorAll('.del').forEach(b=>b.addEventListener('click', e=>{ if(confirm('Delete task?')){ const id=e.target.dataset.id; tasks = tasks.filter(x=>x.id!==id); save(); render(); renderFilters(); } }));
+      list.querySelectorAll('.edit').forEach(b=>b.addEventListener('click', e=>{ const id=e.target.dataset.id; openEditModal(tasks.find(x=>x.id===id)); }));
+
+      renderTimeline(); renderStats(); renderUpcoming();
+    }
+
+    function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+    // quick edit inline via prompt (keeps code small)
+    function openEditModal(t){
+      const title = prompt('Title', t.title); if(title==null) return;
+      t.title = title;
+      t.tag = prompt('Tag', t.tag)||t.tag;
+      t.notes = prompt('Notes', t.notes)||t.notes;
+      const due = prompt('Due date (YYYY-MM-DD)', t.due||''); if(due!==null) t.due = due||null;
+      const start = prompt('Start date (YYYY-MM-DD)', t.start||''); if(start!==null) t.start = start||null;
+      const rem = prompt('Reminder (YYYY-MM-DDTHH:MM) leave blank to clear', t.reminder? new Date(t.reminder).toISOString().slice(0,16):''); if(rem!==null){ t.reminder = rem? new Date(rem).toISOString():null; }
+      save(); render(); scheduleAllReminders(); renderFilters();
+    }
+
+    // timeline rendering (SVG)
+    function renderTimeline(){
+      const svg = $('timeline');
+      while(svg.firstChild) svg.removeChild(svg.firstChild);
+      if(tasks.length===0) return;
+      // compute range between earliest start and latest due
+      const dates = tasks.flatMap(t=>[t.start,t.due]).filter(Boolean).map(d=>new Date(d));
+      if(dates.length===0) return;
+      let min = new Date(Math.min(...dates)); let max = new Date(Math.max(...dates));
+      // pad
+      min.setDate(min.getDate()-2); max.setDate(max.getDate()+2);
+      const dayCount = Math.max(7, Math.ceil((max-min)/(24*3600*1000)));
+      const w = svg.clientWidth || 800; const h = svg.clientHeight || 200;
+      svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
+      // header grid (dates)
+      const leftPad = 120; const rightPad = 20; const innerW = w-leftPad-rightPad;
+      for(let i=0;i<dayCount;i++){
+        const x = leftPad + innerW*(i/(dayCount-1));
+        const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+        line.setAttribute('x1',x); line.setAttribute('x2',x); line.setAttribute('y1',30); line.setAttribute('y2',h-20);
+        line.setAttribute('stroke','rgba(255,255,255,0.03)'); svg.appendChild(line);
+        const lab = document.createElementNS('http://www.w3.org/2000/svg','text'); lab.setAttribute('x',x+4); lab.setAttribute('y',22); lab.setAttribute('font-size',10); lab.setAttribute('fill','rgba(255,255,255,0.5)');
+        const d = new Date(min); d.setDate(min.getDate()+i); lab.textContent = d.toISOString().slice(0,10).slice(5);
+        svg.appendChild(lab);
+      }
+      // rows for tasks
+      const visibleTasks = tasks.slice().sort((a,b)=> new Date(a.start||a.created) - new Date(b.start||b.created));
+      const rowH = Math.max(18, (h-60)/Math.max(1,visibleTasks.length));
+      visibleTasks.forEach((t,i)=>{
+        const y = 40 + i*rowH;
+        const label = document.createElementNS('http://www.w3.org/2000/svg','text'); label.setAttribute('x',12); label.setAttribute('y',y+10); label.setAttribute('font-size',12); label.setAttribute('fill','rgba(255,255,255,0.9)'); label.textContent = t.title.slice(0,28);
+        svg.appendChild(label);
+        // compute x positions
+        const s = t.start? new Date(t.start) : min; const e = t.due? new Date(t.due) : (t.start? new Date(t.start): new Date(t.created));
+        const sx = leftPad + innerW * ((s - min)/(max-min));
+        const ex = leftPad + innerW * ((e - min)/(max-min));
+        const rect = document.createElementNS('http://www.w3.org/2000/svg','rect'); rect.setAttribute('x', Math.min(sx,ex)); rect.setAttribute('y', y-6); rect.setAttribute('rx',6); rect.setAttribute('width', Math.max(6, Math.abs(ex-sx))); rect.setAttribute('height',12);
+        rect.setAttribute('fill', t.done? 'rgba(110,231,183,0.4)' : 'rgba(96,165,250,0.6)'); svg.appendChild(rect);
+        const progW = (t.progress||0)/100 * Math.max(6, Math.abs(ex-sx));
+        if(progW>2){ const p = document.createElementNS('http://www.w3.org/2000/svg','rect'); p.setAttribute('x', Math.min(sx,ex)); p.setAttribute('y', y-6); p.setAttribute('rx',6); p.setAttribute('width', progW); p.setAttribute('height',12); p.setAttribute('fill','rgba(110,231,183,0.9)'); svg.appendChild(p); }
+      });
+      $('rangeInfo').textContent = `${min.toISOString().slice(0,10)} → ${max.toISOString().slice(0,10)}`;
+    }
+
+    function renderStats(){
+      const total = tasks.length; const done = tasks.filter(t=>t.done).length; const pending = total-done; const avgEffort = (tasks.reduce((s,t)=>s+(t.effort||0),0)/Math.max(1,total)).toFixed(1);
+      $('stats').innerHTML = `Total: ${total} • Completed: ${done} • Pending: ${pending} • Avg effort: ${avgEffort}h`;
+    }
+
+    function renderUpcoming(){
+      const now = Date.now();
+      const upcoming = tasks.filter(t=>t.reminder && new Date(t.reminder).getTime() > now).sort((a,b)=> new Date(a.reminder)-new Date(b.reminder)).slice(0,5);
+      if(upcoming.length===0){ $('upcoming').textContent='No upcoming reminders.'; return; }
+      $('upcoming').innerHTML = upcoming.map(t=>`${t.title} — ${new Date(t.reminder).toLocaleString()}`).join('<br>');
+    }
+
+    // reminders
+    async function scheduleAllReminders(){
+      timers.forEach(id=>clearTimeout(id)); timers=[];
+      if(Notification && Notification.permission !== 'granted'){
+        try{ await Notification.requestPermission(); }catch(e){}
+      }
+      tasks.forEach(scheduleReminder);
+    }
+
+    function scheduleReminder(t){
+      if(!t.reminder) return;
+      const when = new Date(t.reminder).getTime(); const now = Date.now();
+      if(when <= now) return;
+      const id = setTimeout(()=>{ showReminder(t); }, Math.min(when-now, 2147483647)); // cap
+      timers.push(id);
+    }
+
+    function showReminder(t){
+      if(Notification && Notification.permission === 'granted'){
+        new Notification('Study Reminder', {body:`${t.title} — due ${t.due||'soon'}`});
+      } else {
+        alert(`Reminder: ${t.title} — due ${t.due||'soon'}`);
+      }
+    }
+
+    // startup
+    init();
+  </script>
+</body>
+</html>
